@@ -171,7 +171,7 @@ function showCx(msg){$('#cxUrl').value=LS.get('api_url')||'';$('#cxTok').value='
 async function call(name,payload){const url=LS.get('api_url'),tok=LS.get('api_tok');if(!url||!tok){showCx();const e=new Error('Belum terhubung');e.auth=true;throw e}
   let j;try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:tok,name,payload:payload||{}})});j=await r.json()}
   catch(x){const e=new Error('Tidak bisa terhubung ke backend. Cek URL & koneksi.');e.net=true;throw e}
-  if(j&&j.ok)return j.data;const e=new Error((j&&j.message)||'Gagal memproses di server');if(j&&j.type==='AUTH_ERROR'){e.auth=true;LS.set('api_tok','');showCx(e.message)}throw e}
+  if(j&&j.ok&&'data' in j)return j.data;const e=new Error(((j&&j.type)?j.type+': ':'')+((j&&j.message)||('respons backend: '+JSON.stringify(j).slice(0,160))));if(j&&j.type==='AUTH_ERROR'){e.auth=true;LS.set('api_tok','');showCx(e.message)}throw e}
 let tt;function toast(m,bad){const t=$('#toast');t.textContent=m;t.style.background=bad?'var(--bad)':'var(--ok)';t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',3200)}
 async function guard(btn,fn){btn.disabled=true;try{await fn()}catch(e){toast(e.message,true)}finally{btn.disabled=false}}
 function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(data instanceof Blob?data:new Blob([data],{type:type||'text/csv;charset=utf-8'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
