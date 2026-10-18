@@ -98,7 +98,7 @@ nav.bn{display:none}.scrim{display:none}
 <section class="page" id="p-bud">
   <div class="stt"><button id="bgPrev">‹</button><b id="bgLbl" style="font-size:18px"></b><button id="bgNext">›</button></div>
   <div class="btns" style="margin-bottom:12px"><button class="s p" id="bgSug" style="margin:0">✨ Saran pintar</button><button class="s" id="bgNew">+ Anggaran</button></div>
-  <div id="bgSum"></div><div id="bgIns"></div><div id="bgList"></div><div id="bgUn"></div>
+  <div id="bgPlan"></div><div id="bgSum"></div><div id="bgIns"></div><div id="bgList"></div><div id="bgUn"></div>
 </section>
 
 <section class="page" id="p-sav"><div class="card"><div class="btns" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">Kantong Tabungan</h2><span class="btns"><button class="s" id="svNew">+ Kantong</button><button class="s p" id="svAdd" style="margin:0">Nabung</button></span></div><div id="svList"></div>
@@ -402,7 +402,7 @@ const bTag=x=>x.status==='OVER'?' <span class="tag neg">Melebihi</span>':x.statu
 const INS_IC={bad:'🔴',warn:'🟠',ok:'✅',tip:'💡'};
 function bRow(x){return `<div class="al" style="display:block"><div class="inl" style="justify-content:space-between"><b>${esc(x.name)}${bTag(x)}${x.rollover?' <span class="tag">rollover</span>':''}</b><span><b class="${x.status==='OVER'?'neg':''}">${rp(x.spent)}</b> <span style="color:var(--mu);font-size:12px">/ ${rp(x.limit)}</span></span></div>${bBar(x.spent,x.limit,bSt(x))}
   <div class="inl" style="justify-content:space-between;margin-top:6px"><small>${x.remaining>=0?'Sisa '+rp(x.remaining)+(x.daily_left>0?' • ±'+rp(x.daily_left)+'/hari':''):'Lebih '+rp(-x.remaining)}${x.carry?' • bawaan '+rp(x.carry):''}</small><button class="s" data-be="${esc(x.budget_id)}">Ubah</button></div></div>`}
-async function loadBud(){try{BG=await call('getBudgets',{month:BGM});renderBud()}catch(e){toast(e.message,true)}}
+async function loadBud(){try{BG=await call('getBudgets',{month:BGM});renderBud();loadPlan()}catch(e){toast(e.message,true)}}
 function renderBud(){const g=BG,t=g.total;$('#bgLbl').textContent=bmLabel(BGM);
   $('#bgSum').innerHTML=g.items.length?`<div class="card"><div class="inl" style="justify-content:space-between"><div><small style="color:var(--mu)">Terpakai</small><div style="font-size:26px;font-weight:700">${rp(t.spent)}</div></div><div style="text-align:right"><small style="color:var(--mu)">dari anggaran</small><div style="font-size:17px;font-weight:600">${rp(t.limit)}</div></div></div>${bBar(t.spent,t.limit,t.spent>t.limit?'o':t.pct>=.8?'w':'')}
     <div class="grid" style="margin-top:14px"><div class="kpi"><span>Sisa</span><b class="${t.remaining<0?'neg':'pos'}">${rp(t.remaining)}</b></div><div class="kpi"><span>Aman per hari</span><b>${rp(t.daily_left)}</b></div><div class="kpi"><span>Sisa hari</span><b>${g.left}</b></div></div></div>`
@@ -419,6 +419,33 @@ $('#bgNew').onclick=()=>budForm({});
 $('#p-bud').onclick=e=>{const be=e.target.closest('[data-be]'),bn=e.target.closest('[data-bn]');
   if(be)budForm(BG.items.find(x=>x.budget_id===be.dataset.be));
   if(bn)budForm({category_id:bn.dataset.bn,monthly_limit:Math.ceil(num(bn.dataset.bv)/10000)*10000})};
+/* rencana anggaran: grup umum -> rincian kategori */
+let PL=null;const GCOL=['#64748b','#d97706','#16a34a','#0d9488','#7c3aed','#e11d48'];
+async function loadPlan(){try{PL=await call('getPlan',{month:BGM});renderPlan()}catch(e){toast(e.message,true)}}
+function renderPlan(){const p=PL,inc=p.income;
+  $('#bgPlan').innerHTML=`<div class="card"><div class="inl" style="justify-content:space-between"><div><small style="color:var(--mu)">Estimasi gaji ${MN[+BGM.slice(5,7)-1]}</small><div style="font-size:26px;font-weight:700">${rp(inc)}</div></div><button class="s" id="plInc">Ubah</button></div>
+  ${p.groups.map((g,i)=>`<div class="row" style="display:block;cursor:pointer" data-g="${esc(g.group_id)}"><div class="inl" style="justify-content:space-between"><b>${esc(g.name)}</b><b>${rp(g.amount)}</b></div><div class="bp"><i style="width:${inc?Math.min(100,g.amount/inc*100):0}%;background:${GCOL[i%GCOL.length]}"></i></div>${g.has_items?`<small>${g.items.length?'Rincian '+rp(g.itemsTotal)+' dari '+rp(g.amount)+' • terpakai '+rp(g.spent):'Ketuk untuk pilih kategori'}</small>`:''}</div>`).join('')}
+  <div class="row"><b>Total alokasi</b><b class="pos">${rp(p.allocated)}</b></div><div class="row"><b>Sisa belum dialokasikan</b><b class="${p.unallocated<0?'neg':''}">${rp(p.unallocated)}</b></div><button class="s" id="plNew">+ Grup anggaran</button></div>`}
+const incForm=()=>formDlg('Estimasi gaji '+bmLabel(BGM),[{k:'amount',l:'Estimasi pemasukan (Rp)',n:1}],{amount:PL.income||''},async o=>{await call('saveIncomeEstimate',{month:BGM,amount:num(o.amount)});toast('Disimpan');await loadPlan()});
+function grpForm(g){formDlg(g.group_id?'Ubah grup':'Grup anggaran baru',[{k:'name',l:'Nama grup',ph:'mis. Living'},{k:'amount',l:'Nominal per bulan (Rp)',n:1},{k:'has_items',l:'Dirinci per kategori (mis. Living)',t:'check'}],g,
+    async o=>{await call('saveBudgetGroup',{group_id:g.group_id||'',name:o.name,amount:num(o.amount),has_items:o.has_items});toast('Grup disimpan');await loadBud();loadBudDash()});
+  if(g.group_id){const d=document.createElement('button');d.className='s d';d.style.marginTop='12px';d.textContent='Hapus grup';
+    d.onclick=async()=>{if(confirm('Hapus grup ini? Anggaran kategorinya tetap ada, hanya dilepas dari grup.')){try{await call('deleteBudgetGroup',{group_id:g.group_id});$('#fd').close();await loadBud();loadBudDash()}catch(x){toast(x.message,true)}}};$('#fB').appendChild(d)}}
+function grpSheet(g){const cats=M.categories.filter(c=>['EXPENSE','OTHER'].includes(c.category_type)&&!noBud().includes(c.category_id));
+  $('#fT').textContent=g.name+' • '+rp(g.amount);
+  $('#fB').innerHTML=`<div class="kpi" id="gsSum" style="margin-bottom:6px"></div>`+cats.map(c=>{const b=PL.bmap[c.category_id],mine=b&&b.gid===g.group_id,lock=b&&b.gid&&!mine;
+    return `<div class="row"><label class="inl" style="margin:0;flex:1;color:var(--tx);font-size:13.5px"><input type="checkbox" data-gc="${esc(c.category_id)}" ${mine?'checked':''} ${lock?'disabled':''}><span>${esc(c.category_name)}${lock?`<small>sudah di ${esc(b.gname)}</small>`:b&&!mine?'<small>anggaran lama, ikut dipindah</small>':''}</span></label><input data-gv="${esc(c.category_id)}" inputmode="numeric" value="${b&&!lock?b.limit:''}" ${lock?'disabled':''} style="width:112px;text-align:right"></div>`}).join('')
+    +`<div class="btns" style="margin-top:10px"><button class="s" id="gsEdit">Ubah nama / nominal grup</button></div>`;
+  const upd=()=>{const s=$('#gsSum');if(!s)return;const t=$$('#fB [data-gc]').filter(c=>c.checked).reduce((a,c)=>a+num($(`#fB [data-gv="${c.dataset.gc}"]`).value),0),left=g.amount-t;
+    s.innerHTML=`<div class="row" style="padding:4px 0"><span>Terisi</span><b>${rp(t)}</b></div><div class="row" style="padding:4px 0"><span>${left<0?'Kelebihan':'Sisa di grup'}</span><b class="${left<0?'neg':'pos'}">${rp(Math.abs(left))}</b></div>`};
+  $('#fB').oninput=e=>{const v=e.target.dataset.gv;if(v!==undefined){const c=$(`#fB [data-gc="${v}"]`);if(c&&num(e.target.value)>0)c.checked=true}upd()};$('#fB').onchange=upd;
+  $('#gsEdit').onclick=()=>{$('#fd').close();grpForm(g)};
+  $('#fOk').onclick=()=>guard($('#fOk'),async()=>{const it=$$('#fB [data-gc]').filter(c=>c.checked).map(c=>({category_id:c.dataset.gc,monthly_limit:num($(`#fB [data-gv="${c.dataset.gc}"]`).value)}));
+    if(it.some(x=>x.monthly_limit<1))throw new Error('Isi nominal untuk setiap kategori yang dipilih');
+    await call('saveGroupItems',{group_id:g.group_id,items:it});$('#fd').close();toast('Rincian disimpan');await loadBud();loadBudDash()});
+  upd();$('#fd').showModal()}
+$('#bgPlan').onclick=e=>{if(e.target.closest('#plInc'))return incForm();if(e.target.closest('#plNew'))return grpForm({has_items:true});
+  const r=e.target.closest('[data-g]');if(!r||!PL)return;const g=PL.groups.find(x=>x.group_id===r.dataset.g);if(g)g.has_items?grpSheet(g):grpForm(g)};
 /* saran pintar */
 $('#bgSug').onclick=()=>{$('#fT').textContent='✨ Saran anggaran pintar';
   $('#fB').innerHTML=`<p style="font-size:12.5px;color:var(--mu);margin:0">Dihitung dari rata-rata tertimbang 3 bulan sebelum ${esc(bmLabel(BGM))} (bulan terbaru lebih berpengaruh, lonjakan sesaat diredam).</p><label>Target hemat</label><select id="sgT">${[0,5,10,15,20].map(v=>`<option value="${v}">${v?'Hemat '+v+'%':'Sesuai kebiasaan'}</option>`).join('')}</select><div id="sgBody" style="margin-top:12px;max-height:46vh;overflow:auto"></div>`;
