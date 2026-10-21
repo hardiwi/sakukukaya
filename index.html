@@ -82,7 +82,7 @@ nav.bn{display:none}.scrim{display:none}
   <div class="card hero2"><small>Sisa Belanja (IDR)</small><div class="big" id="total">…</div><div class="pill" id="chg"></div>
    <div class="g4"><div><small>Hutang Aktif</small><b id="hDebt"></b></div><div><small>Tabungan Aktif</small><b id="hSav"></b></div><div><small id="hUpL">Pembayaran Mendatang</small><b id="hUp"></b></div></div><div style="font-size:11px;opacity:.65;margin-top:10px">Ketuk angka untuk menampilkan / menyembunyikan</div></div>
   <div id="grp"></div>
-  <div class="sec" style="display:flex;justify-content:space-between;align-items:center">Anggaran Bulan Ini<button class="s" data-p2="bud">Kelola</button></div><div id="bdash"></div>
+  <div class="sec" style="display:flex;justify-content:space-between;align-items:center">Anggaran Periode Ini<button class="s" data-p2="bud">Kelola</button></div><div id="bdash"></div>
   <div class="sec" style="display:flex;justify-content:space-between;align-items:center">Kantong Tabungan<button class="s" data-p2="sav">Kelola</button></div><div id="pk"></div>
   <div class="card" style="margin-top:18px"><div class="inl" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">Tagihan</h2><button class="s" id="dadd2">+ Tagihan</button></div>
    <div class="stt"><button id="bPrev">‹</button><b id="bLbl"></b><button id="bNext">›</button></div><div id="dbt"></div></div>
@@ -96,8 +96,8 @@ nav.bn{display:none}.scrim{display:none}
 </section>
 
 <section class="page" id="p-bud">
-  <div class="stt"><button id="bgPrev">‹</button><b id="bgLbl" style="font-size:18px"></b><button id="bgNext">›</button></div>
-  <div class="btns" style="margin-bottom:12px"><button class="s p" id="bgSug" style="margin:0">✨ Saran pintar</button><button class="s" id="bgNew">+ Anggaran</button></div>
+  <div class="stt"><button id="bgPrev">‹</button><div id="bgLbl" style="text-align:center;line-height:1.3"></div><button id="bgNext">›</button></div>
+  <div class="btns" style="margin-bottom:12px"><button class="s p" id="bgSug" style="margin:0">✨ Saran pintar</button><button class="s" id="bgNew">+ Anggaran</button><button class="s" id="bgPer">📅 Periode</button></div>
   <div id="bgPlan"></div><div id="bgSum"></div><div id="bgIns"></div><div id="bgList"></div><div id="bgUn"></div>
 </section>
 
@@ -207,7 +207,7 @@ const closeSide=()=>{$('#side').classList.remove('open');$('#scrim').classList.r
 function seg(id,cb){$(id).onclick=e=>{const b=e.target.closest('button');if(!b)return;$$(id+' button').forEach(x=>x.classList.toggle('on',x===b));cb(b.dataset.v)}}
 
 /* ---------- dialog form generik ---------- */
-function formDlg(title,fields,vals,onSave){$('#fT').textContent=title;
+function formDlg(title,fields,vals,onSave){$('#fT').textContent=title;$('#fB').oninput=$('#fB').onchange=$('#fB').onclick=null;
   $('#fB').innerHTML=fields.map(f=>{const v=vals[f.k]??'';
     if(f.t==='check')return `<label class="inl"><input type="checkbox" data-k="${f.k}" ${v?'checked':''}> ${f.l}</label>`;
     if(f.t==='select')return `<label>${f.l}</label><select data-k="${f.k}">${f.o.map(([a,b])=>`<option value="${esc(a)}" ${a==v?'selected':''}>${esc(b)}</option>`).join('')}</select>`;
@@ -394,24 +394,27 @@ $('#svAdd').onclick=()=>{if(!SV.pockets.length)return toast('Buat kantong dulu',
     await call('addSavingDeposit',{request_id:R.s,saving_id:o.p,type:o.type,from_id:o.from,amount:num(o.amt),date:o.date,remarks:o.rem});toast(o.type==='TARIK'?'Penarikan tercatat':'Tabungan tercatat');await loadSav();loadDash()})};
 
 /* ---------- anggaran pintar ---------- */
-let BG=null,BGM=nowLocal().slice(0,7),SG=null;
-const noBud=()=>[M.settings.cat_talang,M.settings.cat_transfer,M.settings.cat_setor];
+let BG=null,BGM='',SG=null; // BGM kosong = periode berjalan (ditentukan backend)
+const noBud=()=>[M.settings.cat_talang,M.settings.cat_transfer],BCT=['EXPENSE','OTHER','OJOL'],CTL={EXPENSE:'Pengeluaran',OTHER:'Lainnya',OJOL:'Ojol'};
+const fmtD=s=>+s.slice(8)+' '+MN[+s.slice(5,7)-1].slice(0,3)+' '+s.slice(0,4);
+const budCats=()=>M.categories.filter(c=>c.is_active&&BCT.includes(c.category_type)&&!noBud().includes(c.category_id)).sort((a,b)=>a.category_type.localeCompare(b.category_type)||a.category_name.localeCompare(b.category_name));
+async function refCats(){try{const f=await call('getBootstrap');M.categories=f.categories;M.settings=f.settings}catch(e){}} // selalu ikut data MASTER_CATEGORY terbaru
 const bSt=x=>x.status==='OVER'?'o':x.status==='WARN'?'w':'';
 const bBar=(s,l,st)=>`<div class="bp"><i class="${st}" style="width:${l?Math.min(100,s/l*100):0}%"></i></div>`;
 const bTag=x=>x.status==='OVER'?' <span class="tag neg">Melebihi</span>':x.status==='WARN'?' <span class="tag" style="color:var(--warn)">Waspada</span>':'';
 const INS_IC={bad:'🔴',warn:'🟠',ok:'✅',tip:'💡'};
 function bRow(x){return `<div class="al" style="display:block"><div class="inl" style="justify-content:space-between"><b>${esc(x.name)}${bTag(x)}${x.rollover?' <span class="tag">rollover</span>':''}</b><span><b class="${x.status==='OVER'?'neg':''}">${rp(x.spent)}</b> <span style="color:var(--mu);font-size:12px">/ ${rp(x.limit)}</span></span></div>${bBar(x.spent,x.limit,bSt(x))}
   <div class="inl" style="justify-content:space-between;margin-top:6px"><small>${x.remaining>=0?'Sisa '+rp(x.remaining)+(x.daily_left>0?' • ±'+rp(x.daily_left)+'/hari':''):'Lebih '+rp(-x.remaining)}${x.carry?' • bawaan '+rp(x.carry):''}</small><button class="s" data-be="${esc(x.budget_id)}">Ubah</button></div></div>`}
-async function loadBud(){try{BG=await call('getBudgets',{month:BGM});renderBud();loadPlan()}catch(e){toast(e.message,true)}}
-function renderBud(){const g=BG,t=g.total;$('#bgLbl').textContent=bmLabel(BGM);
+async function loadBud(){try{[BG]=await Promise.all([call('getBudgets',{month:BGM}),refCats()]);BGM=BG.month;renderBud();loadPlan()}catch(e){toast(e.message,true)}}
+function renderBud(){const g=BG,t=g.total;$('#bgLbl').innerHTML=`<b style="font-size:18px">${bmLabel(BGM)}</b><br><span style="font-size:12px;color:var(--mu)">${fmtD(g.period.start)} – ${fmtD(g.period.end)}${g.period.custom?' • kustom':''}</span>`;
   $('#bgSum').innerHTML=g.items.length?`<div class="card"><div class="inl" style="justify-content:space-between"><div><small style="color:var(--mu)">Terpakai</small><div style="font-size:26px;font-weight:700">${rp(t.spent)}</div></div><div style="text-align:right"><small style="color:var(--mu)">dari anggaran</small><div style="font-size:17px;font-weight:600">${rp(t.limit)}</div></div></div>${bBar(t.spent,t.limit,t.spent>t.limit?'o':t.pct>=.8?'w':'')}
     <div class="grid" style="margin-top:14px"><div class="kpi"><span>Sisa</span><b class="${t.remaining<0?'neg':'pos'}">${rp(t.remaining)}</b></div><div class="kpi"><span>Aman per hari</span><b>${rp(t.daily_left)}</b></div><div class="kpi"><span>Sisa hari</span><b>${g.left}</b></div></div></div>`
     :`<div class="card"><b>Belum ada anggaran</b><p style="color:var(--mu);font-size:13px;margin:6px 0 0">Tekan “✨ Saran pintar” — anggaran disusun otomatis dari kebiasaan belanja 3 bulan terakhir.</p></div>`;
   $('#bgIns').innerHTML=g.insights.length?`<div class="card"><h2>Insight</h2>${g.insights.map(i=>`<div class="ins"><span>${INS_IC[i.level]||'💡'}</span><span>${esc(i.msg)}</span></div>`).join('')}</div>`:'';
   $('#bgList').innerHTML=g.items.map(bRow).join('');
   $('#bgUn').innerHTML=g.unbudgeted.length?`<div class="card"><h2>Belum dianggarkan</h2>${g.unbudgeted.slice(0,8).map(u=>`<div class="row"><span>${esc(u.name)}<small>${rp(u.spent)} bulan ini</small></span><button class="s" data-bn="${esc(u.category_id)}" data-bv="${u.spent}">+ Anggaran</button></div>`).join('')}</div>`:''}
-$('#bgPrev').onclick=()=>{BGM=shiftM(BGM,-1);loadBud()};$('#bgNext').onclick=()=>{BGM=shiftM(BGM,1);loadBud()};
-function budForm(b){const cats=M.categories.filter(c=>!noBud().includes(c.category_id));
+$('#bgPrev').onclick=()=>{if(BGM){BGM=shiftM(BGM,-1);loadBud()}};$('#bgNext').onclick=()=>{if(BGM){BGM=shiftM(BGM,1);loadBud()}};
+function budForm(b){const cats=budCats();
   formDlg(b.budget_id?'Ubah anggaran':'Anggaran baru',[{k:'category_id',l:'Kategori',t:'select',o:cats.map(c=>[c.category_id,c.category_name])},{k:'monthly_limit',l:'Batas per bulan (Rp)',n:1},{k:'rollover',l:'Bawa sisa bulan lalu (rollover)',t:'check'}],b,
     async o=>{await call('saveBudget',{budget_id:b.budget_id||'',category_id:o.category_id,monthly_limit:num(o.monthly_limit),rollover:o.rollover});toast('Anggaran disimpan');await loadBud();loadBudDash()});
   if(b.budget_id){const del=document.createElement('button');del.className='s d';del.textContent='Hapus anggaran';del.onclick=async()=>{if(confirm('Hapus anggaran ini?')){try{await call('deleteBudget',{budget_id:b.budget_id});$('#fd').close();await loadBud();loadBudDash()}catch(x){toast(x.message,true)}}};$('#fB').appendChild(del)}}
@@ -424,26 +427,42 @@ let PL=null;const GCOL=['#64748b','#d97706','#16a34a','#0d9488','#7c3aed','#e11d
 async function loadPlan(){try{PL=await call('getPlan',{month:BGM});renderPlan()}catch(e){toast(e.message,true)}}
 function renderPlan(){const p=PL,inc=p.income;
   $('#bgPlan').innerHTML=`<div class="card"><div class="inl" style="justify-content:space-between"><div><small style="color:var(--mu)">Estimasi gaji ${MN[+BGM.slice(5,7)-1]}</small><div style="font-size:26px;font-weight:700">${rp(inc)}</div></div><button class="s" id="plInc">Ubah</button></div>
-  ${p.groups.map((g,i)=>`<div class="row" style="display:block;cursor:pointer" data-g="${esc(g.group_id)}"><div class="inl" style="justify-content:space-between"><b>${esc(g.name)}</b><b>${rp(g.amount)}</b></div><div class="bp"><i style="width:${inc?Math.min(100,g.amount/inc*100):0}%;background:${GCOL[i%GCOL.length]}"></i></div>${g.has_items?`<small>${g.items.length?'Rincian '+rp(g.itemsTotal)+' dari '+rp(g.amount)+' • terpakai '+rp(g.spent):'Ketuk untuk pilih kategori'}</small>`:''}</div>`).join('')}
+  ${p.groups.map((g,i)=>`<div class="row" style="display:block;cursor:pointer" data-g="${esc(g.group_id)}"><div class="inl" style="justify-content:space-between"><b>${esc(g.name)}</b><b>${rp(g.amount)}</b></div><div class="bp"><i style="width:${inc?Math.min(100,g.amount/inc*100):0}%;background:${GCOL[i%GCOL.length]}"></i></div>${g.has_items?`<small>${g.items.length?'Rincian '+rp(g.itemsTotal)+' dari '+rp(g.amount)+' • terpakai '+rp(g.spent)+'<br>'+esc(g.items.slice(0,4).map(i=>i.name).join(', '))+(g.items.length>4?' +'+(g.items.length-4)+' lagi':''):'Ketuk untuk pilih kategori'}</small>`:''}</div>`).join('')}
   <div class="row"><b>Total alokasi</b><b class="pos">${rp(p.allocated)}</b></div><div class="row"><b>Sisa belum dialokasikan</b><b class="${p.unallocated<0?'neg':''}">${rp(p.unallocated)}</b></div><button class="s" id="plNew">+ Grup anggaran</button></div>`}
 const incForm=()=>formDlg('Estimasi gaji '+bmLabel(BGM),[{k:'amount',l:'Estimasi pemasukan (Rp)',n:1}],{amount:PL.income||''},async o=>{await call('saveIncomeEstimate',{month:BGM,amount:num(o.amount)});toast('Disimpan');await loadPlan()});
 function grpForm(g){formDlg(g.group_id?'Ubah grup':'Grup anggaran baru',[{k:'name',l:'Nama grup',ph:'mis. Living'},{k:'amount',l:'Nominal per bulan (Rp)',n:1},{k:'has_items',l:'Dirinci per kategori (mis. Living)',t:'check'}],g,
     async o=>{await call('saveBudgetGroup',{group_id:g.group_id||'',name:o.name,amount:num(o.amount),has_items:o.has_items});toast('Grup disimpan');await loadBud();loadBudDash()});
   if(g.group_id){const d=document.createElement('button');d.className='s d';d.style.marginTop='12px';d.textContent='Hapus grup';
     d.onclick=async()=>{if(confirm('Hapus grup ini? Anggaran kategorinya tetap ada, hanya dilepas dari grup.')){try{await call('deleteBudgetGroup',{group_id:g.group_id});$('#fd').close();await loadBud();loadBudDash()}catch(x){toast(x.message,true)}}};$('#fB').appendChild(d)}}
-function grpSheet(g){const cats=M.categories.filter(c=>['EXPENSE','OTHER'].includes(c.category_type)&&!noBud().includes(c.category_id));
-  $('#fT').textContent=g.name+' • '+rp(g.amount);
-  $('#fB').innerHTML=`<div class="kpi" id="gsSum" style="margin-bottom:6px"></div>`+cats.map(c=>{const b=PL.bmap[c.category_id],mine=b&&b.gid===g.group_id,lock=b&&b.gid&&!mine;
-    return `<div class="row"><label class="inl" style="margin:0;flex:1;color:var(--tx);font-size:13.5px"><input type="checkbox" data-gc="${esc(c.category_id)}" ${mine?'checked':''} ${lock?'disabled':''}><span>${esc(c.category_name)}${lock?`<small>sudah di ${esc(b.gname)}</small>`:b&&!mine?'<small>anggaran lama, ikut dipindah</small>':''}</span></label><input data-gv="${esc(c.category_id)}" inputmode="numeric" value="${b&&!lock?b.limit:''}" ${lock?'disabled':''} style="width:112px;text-align:right"></div>`}).join('')
-    +`<div class="btns" style="margin-top:10px"><button class="s" id="gsEdit">Ubah nama / nominal grup</button></div>`;
-  const upd=()=>{const s=$('#gsSum');if(!s)return;const t=$$('#fB [data-gc]').filter(c=>c.checked).reduce((a,c)=>a+num($(`#fB [data-gv="${c.dataset.gc}"]`).value),0),left=g.amount-t;
-    s.innerHTML=`<div class="row" style="padding:4px 0"><span>Terisi</span><b>${rp(t)}</b></div><div class="row" style="padding:4px 0"><span>${left<0?'Kelebihan':'Sisa di grup'}</span><b class="${left<0?'neg':'pos'}">${rp(Math.abs(left))}</b></div>`};
-  $('#fB').oninput=e=>{const v=e.target.dataset.gv;if(v!==undefined){const c=$(`#fB [data-gc="${v}"]`);if(c&&num(e.target.value)>0)c.checked=true}upd()};$('#fB').onchange=upd;
-  $('#gsEdit').onclick=()=>{$('#fd').close();grpForm(g)};
+/* pilih kategori untuk grup — daftar selalu dari MASTER_CATEGORY terbaru, bisa cari / tambah / ubah kategori langsung */
+async function grpSheet(g,keep){await refCats();const cats=budCats();keep=keep||{};
+  $('#fT').textContent=g.name+' • '+rp(g.amount);$('#fB').oninput=$('#fB').onchange=null;
+  const rows=cats.map(c=>{const id=c.category_id,b=PL.bmap[id],k=keep[id],mine=k?k.c:!!(b&&b.gid===g.group_id),lock=!!(b&&b.gid&&b.gid!==g.group_id),val=k?k.v:(b&&!lock?b.limit:'');
+    return `<div class="row" data-cn="${esc(c.category_name.toLowerCase())}"><label class="inl" style="margin:0;flex:1;color:var(--tx);font-size:13.5px"><input type="checkbox" data-gc="${esc(id)}" ${mine?'checked':''} ${lock?'disabled':''}><span>${esc(c.category_name)} <span class="tag">${CTL[c.category_type]||''}</span>${lock?`<small>sudah di ${esc(b.gname)}</small>`:b&&!mine?'<small>anggaran lama, ikut dipindah</small>':''}</span></label><input data-gv="${esc(id)}" inputmode="numeric" value="${esc(val)}" ${lock?'disabled':''} style="width:104px;text-align:right"><button class="s" data-ce="${esc(id)}" title="Ubah kategori">✎</button></div>`}).join('');
+  $('#fB').innerHTML=`<div class="kpi" id="gsSum" style="margin-bottom:8px"></div><input id="gsQ" placeholder="Cari kategori…" style="margin-bottom:6px"><div id="gsL" style="max-height:44vh;overflow:auto">${rows||'<small style="color:var(--mu)">Belum ada kategori pengeluaran di MASTER_CATEGORY. Tambahkan dengan “+ Kategori baru”.</small>'}</div>
+    <div class="btns" style="margin-top:10px"><button class="s" id="gsNew">+ Kategori baru</button><button class="s" id="gsEdit">Ubah nama / nominal grup</button></div>`;
+  const snap=()=>{const o={};$$('#fB [data-gc]').forEach(c=>{o[c.dataset.gc]={c:c.checked,v:$(`#fB [data-gv="${c.dataset.gc}"]`).value}});return o},
+  upd=()=>{const s=$('#gsSum');if(!s)return;const t=$$('#fB [data-gc]').filter(c=>c.checked).reduce((a,c)=>a+num($(`#fB [data-gv="${c.dataset.gc}"]`).value),0),left=g.amount-t;
+    s.innerHTML=`<div class="row" style="padding:4px 0"><span>Terisi</span><b>${rp(t)}</b></div><div class="row" style="padding:4px 0"><span>${left<0?'Kelebihan':'Sisa di grup'}</span><b class="${left<0?'neg':'pos'}">${rp(Math.abs(left))}</b></div>`},
+  catDlg=(c,kp)=>{formDlg(c?'Ubah kategori':'Kategori baru',[{k:'name',l:'Nama kategori'},{k:'type',l:'Jenis',t:'select',o:CT.filter(x=>BCT.includes(x[0]))},{k:'is_active',l:'Aktif',t:'check'}],c?{name:c.category_name,type:c.category_type,is_active:c.is_active}:{type:'EXPENSE',is_active:true},
+      async o=>{const r=await call('saveCategory',{...o,category_id:c?c.category_id:''});toast('Kategori disimpan');await refreshMaster();const k2=kp;if(!c)k2[r.category_id]={c:true,v:''};setTimeout(()=>grpSheet(g,k2),60)})};
+  $('#fB').oninput=e=>{const v=e.target.dataset.gv;if(v!==undefined){const c=$(`#fB [data-gc="${v}"]`);if(c&&num(e.target.value)>0)c.checked=true}if(e.target.id==='gsQ'){const q=e.target.value.trim().toLowerCase();$$('#gsL [data-cn]').forEach(r=>r.style.display=r.dataset.cn.includes(q)?'':'none')}upd()};$('#fB').onchange=upd;
+  $('#fB').onclick=e=>{const ce=e.target.closest('[data-ce]');if(ce)catDlg(M.categories.find(x=>x.category_id===ce.dataset.ce),snap())};
+  $('#gsNew').onclick=()=>catDlg(null,snap());$('#gsEdit').onclick=()=>{$('#fB').onclick=null;$('#fd').close();grpForm(g)};
   $('#fOk').onclick=()=>guard($('#fOk'),async()=>{const it=$$('#fB [data-gc]').filter(c=>c.checked).map(c=>({category_id:c.dataset.gc,monthly_limit:num($(`#fB [data-gv="${c.dataset.gc}"]`).value)}));
     if(it.some(x=>x.monthly_limit<1))throw new Error('Isi nominal untuk setiap kategori yang dipilih');
-    await call('saveGroupItems',{group_id:g.group_id,items:it});$('#fd').close();toast('Rincian disimpan');await loadBud();loadBudDash()});
-  upd();$('#fd').showModal()}
+    await call('saveGroupItems',{group_id:g.group_id,items:it});$('#fB').onclick=null;$('#fd').close();toast('Rincian disimpan');await loadBud();loadBudDash()});
+  upd();if(!$('#fd').open)$('#fd').showModal()}
+/* periode anggaran: rentang bebas atau siklus bulanan */
+function perForm(){const pr=BG.period;$('#fT').textContent='Periode anggaran';$('#fB').oninput=$('#fB').onchange=null;$('#fB').onclick=null;
+  $('#fB').innerHTML=`<p style="font-size:12.5px;color:var(--mu);margin:0">Atur tanggal anggaran sesuai siklus gajianmu.</p><label>Berlaku untuk</label><select id="pM"><option value="custom">Periode ini saja (tanggal bebas)</option><option value="cycle">Setiap bulan, mulai tanggal yang sama</option></select><label>Mulai</label><input type="date" id="pS" value="${pr.start}"><label id="pEL">Sampai (termasuk)</label><input type="date" id="pE" value="${pr.end}"><small id="pH" style="display:block;color:var(--mu);margin-top:8px"></small>`;
+  const hint=()=>{if(!$('#pM'))return;const cy=$('#pM').value==='cycle',s=$('#pS').value,e=$('#pE').value;$('#pE').style.display=$('#pEL').style.display=cy?'none':'';
+    $('#pH').textContent=cy?(s?`Tiap bulan mulai tanggal ${+s.slice(8)} sampai sehari sebelum tanggal itu di bulan berikutnya.${+s.slice(8)>28?' (gunakan tanggal 1–28)':''}`:''):(s&&e?`${fmtD(s)} – ${fmtD(e)} • ${Math.round((new Date(e)-new Date(s))/864e5)+1} hari. Periode berikutnya otomatis mulai sehari setelahnya.`:'')};
+  $('#fB').oninput=$('#fB').onchange=hint;hint();
+  if(pr.custom){const d=document.createElement('button');d.className='s d';d.style.marginTop='12px';d.textContent='Hapus periode kustom';d.onclick=async()=>{try{await call('savePeriod',{month:BGM,mode:'reset'});$('#fd').close();toast('Kembali ke default');await loadBud();loadBudDash()}catch(x){toast(x.message,true)}};$('#fB').appendChild(d)}
+  $('#fOk').onclick=()=>guard($('#fOk'),async()=>{const cy=$('#pM').value==='cycle',s=$('#pS').value;await call('savePeriod',cy?{month:BGM,mode:'cycle',cycle_day:+s.slice(8)}:{month:BGM,mode:'custom',start:s,end:$('#pE').value});$('#fd').close();toast('Periode disimpan');await loadBud();loadBudDash()});
+  $('#fd').showModal()}
+$('#bgPer').onclick=()=>{if(BG)perForm()};
 $('#bgPlan').onclick=e=>{if(e.target.closest('#plInc'))return incForm();if(e.target.closest('#plNew'))return grpForm({has_items:true});
   const r=e.target.closest('[data-g]');if(!r||!PL)return;const g=PL.groups.find(x=>x.group_id===r.dataset.g);if(g)g.has_items?grpSheet(g):grpForm(g)};
 /* saran pintar */
@@ -461,7 +480,7 @@ async function sugLoad(){const b=$('#sgBody');b.innerHTML='<small style="color:v
       (SG.room<0&&SG.income_avg?'<small style="color:var(--warn)">Saran melebihi pemasukan — coba naikkan target hemat.</small>':'')+
       SG.items.map(x=>`<div class="row" style="align-items:flex-start"><label class="inl" style="margin:0;flex:1;color:var(--tx);font-size:13.5px"><input type="checkbox" data-sc="${esc(x.category_id)}" checked><span><b>${esc(x.name)}</b>${x.existing?` <span class="tag">ada ${rp(x.existing)}</span>`:''}<small>rata-rata ${rp(x.avg)} • ${x.history.map(rp).join(' · ')}</small></span></label><input data-sg="${esc(x.category_id)}" inputmode="numeric" value="${x.suggested}" style="width:112px;text-align:right"></div>`).join('')
   }catch(e){b.textContent=e.message}}
-async function loadBudDash(){const el=$('#bdash');if(!el)return;try{const g=await call('getBudgets',{month:nowLocal().slice(0,7)}),t=g.total,top=g.insights.find(i=>i.level!=='tip');
+async function loadBudDash(){const el=$('#bdash');if(!el)return;try{const g=await call('getBudgets',{month:''}),t=g.total,top=g.insights.find(i=>i.level!=='tip');
   el.innerHTML=g.items.length?`<div class="al" style="display:block;cursor:pointer" data-p2="bud"><div class="inl" style="justify-content:space-between"><b>Terpakai ${mv(t.spent)}</b><span style="color:var(--mu);font-size:12.5px">dari ${mv(t.limit)}</span></div>${bBar(t.spent,t.limit,t.spent>t.limit?'o':t.pct>=.8?'w':'')}<small style="margin-top:6px">${top?INS_IC[top.level]+' '+esc(top.msg):'Aman per hari ±'+rp(t.daily_left)}</small></div>`
     :`<div class="al"><div class="m"><b>Belum ada anggaran</b><small>Susun otomatis dari kebiasaan belanjamu</small></div><button class="s" data-p2="bud">Mulai</button></div>`}catch(e){el.innerHTML=''}}
 
